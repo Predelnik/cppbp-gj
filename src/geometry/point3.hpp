@@ -1,0 +1,1 @@
+#pragma onceclass Point3{public:  int x;  int y;  int z;};

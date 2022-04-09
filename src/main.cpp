@@ -8,173 +8,28 @@
 #include <ftxui/component/screen_interactive.hpp>// for ScreenInteractive
 #include <spdlog/spdlog.h>
 
+#include "geometry/geom_funcs.hpp"
+#include "geometry/plane.hpp"
+#include "geometry/point2.hpp"
+#include "geometry/point2f.hpp"
+#include "geometry/point3f.hpp"
+
 // This file will be generated automatically when you run the CMake
 // configuration step. It creates a namespace called `cppbp-gj`. You can modify
 // the source template at `configured_files/config.hpp.in`.
 #include <internal_use_only/config.hpp>
 
+class exit_t;
 using namespace std::chrono_literals;
 
-struct Color
-{
-  std::uint8_t R{};
-  std::uint8_t G{};
-  std::uint8_t B{};
-};
-
-// A simple way of representing a bitmap on screen using only characters
-struct Bitmap : ftxui::Node
-{
-  Bitmap(std::size_t width, std::size_t height)// NOLINT same typed parameters adjacent to each other
-    : width_(width), height_(height)
-  {}
-
-  Color &at(std::size_t x, std::size_t y) { return pixels.at(width_ * y + x); }
-
-  void ComputeRequirement() override
-  {
-    requirement_ = ftxui::Requirement{
-      .min_x = static_cast<int>(width_), .min_y = static_cast<int>(height_ / 2), .selected_box{ 0, 0, 0, 0 }
-    };
-  }
-
-  void Render(ftxui::Screen &screen) override
-  {
-    for (std::size_t x = 0; x < width_; ++x) {
-      for (std::size_t y = 0; y < height_ / 2; ++y) {
-        auto &p = screen.PixelAt(box_.x_min + static_cast<int>(x), box_.y_min + static_cast<int>(y));
-        p.character = "▄";
-        const auto &top_color = at(x, y * 2);
-        const auto &bottom_color = at(x, y * 2 + 1);
-        p.background_color = ftxui::Color{ top_color.R, top_color.G, top_color.B };
-        p.foreground_color = ftxui::Color{ bottom_color.R, bottom_color.G, bottom_color.B };
-      }
-    }
-  }
-
-  [[nodiscard]] auto width() const noexcept { return width_; }
-
-  [[nodiscard]] auto height() const noexcept { return height_; }
-
-  [[nodiscard]] auto &data() noexcept { return pixels; }
-
-private:
-  std::size_t width_;
-  std::size_t height_;
-
-  std::vector<Color> pixels = std::vector<Color>(width_ * height_, Color{});
-};
-
-class Point3
-{
-public:
-  int x;
-  int y;
-  int z;
-};
-
-class Point2F
-{
-public:
-  Point2F operator+(const Point2F &other) const { return { x + other.x, y + other.y}; }
-  Point2F operator-(const Point2F &other) const { return { x - other.x, y - other.y }; }
-  [[nodiscard]] double length() const { return sqrt(sq_length()); }
-  [[nodiscard]] double sq_length() const { return x * x + y * y; }
-
-public:
-  double x;
-  double y;
-};
-
-class Point2
-{
-public:
-  constexpr Point2(int x, int y) : x(x), y(y) {}
-  constexpr Point2(const Point2F &p) : x(static_cast<int>(p.x)), y(static_cast<int>(p.y)) {}
-
-public:
-  int x;
-  int y;
-};
-
-class Point3F
-{
-public:
-  double x;
-  double y;
-  double z;
-
-public:
-  Point3F operator-(const Point3F &other) const
-  {
-    return { x - other.x, y - other.y, z - other.z };
-  }
-  Point3F operator+(const Point3F &other) const
-  {
-    return { x + other.x, y + other.y, z + other.z };
-  }
-  Point3F &operator+=(const Point3F &other)
-  {
-    *this = *this + other;
-    return *this;
-  }
-
-  [[nodiscard]] double length() const
-  {
-    return sqrt(sq_length());
-  }
-
-  [[nodiscard]] double sq_length() const
-  {
-    return x * x + y * y + z * z;
-  }
-
-  [[nodiscard]] Point3F normalized() const
-  {
-    return *this / length();
-  }
-  Point3F operator-() const
-  {
-    return {-x, -y, -z};
-  }
-  Point3F operator/(double v) const
-  {
-    return{x/v, y/v, z/v};
-  }
-  Point3F operator*(double v) const { return { x * v, y * v, z * v }; }
-
-  [[nodiscard]] Point3F cross(const Point3F &other) const
-  {
-    return {y *other.z - z *other.y, other.x * z - other.z * x, x * other.y - y * other.x};
-  }
-
-  [[nodiscard]] double dot(const Point3F &other) const
-  {
-    return x *other.x + y *other.y + z * other.z;
-  }
-};
-
-class Plane
-{
-public:
-  Point3F normal;
-  Point3F origin;
-};
-
-Point3F project_on(const Point3F &point, const Plane &plane)
-{
-  // inspired by https://stackoverflow.com/a/9605695/1269661
-  const auto v = point - plane.origin;
-  const auto dist= v.dot(plane.normal);
-  return point - plane.normal * dist;
-}
-
-
-
 constexpr Point3F world_center{ 0., 0., 0. };
-constexpr double world_radius = 400.0;
+constexpr double world_radius = 250.0;
 constexpr Point2 canvas_size = { 200, 100 };
 constexpr Point2F screen_offset = { canvas_size.x / 2., canvas_size.y * 3. / 4. };
+constexpr auto win_threshold = 5.0;
+constexpr int row_height = 4;
+constexpr auto step_frame_count = 4;
+constexpr auto compass_len = 15.0;
 
 bool facing_right = true;
 int step_frame = 0;
@@ -182,7 +37,7 @@ Point3F player_pos = { world_center.x, world_center.y, world_center.z + world_ra
 Point3F object1_pos = { world_center.x + world_radius / 10, world_center.y, world_center.z + world_radius};
 Point3F object2_pos = { world_center.x - world_radius / 5, world_center.y, world_center.z + world_radius };
 double angle = 0.0;
-constexpr double angle_step = std::numbers::pi_v<double> * 0.025;
+constexpr double angle_step = std::numbers::pi_v<double> / 80;
 Point3F player_dir = { 1.0, 0.0, 0.0 };
 Point3F player_normal = { 0.0, 1.0, 0.0 };
 Point3F get_world_center_to_player() { return (world_center - player_pos).normalized(); }
@@ -190,8 +45,135 @@ Point3F  get_camera_x() { return get_world_center_to_player().cross (player_norm
 Point3F get_camera_normal() { return player_normal; }
 std::chrono::time_point<std::chrono::steady_clock> last_move_time;
 std::chrono::time_point<std::chrono::steady_clock> cur_time;
+std::chrono::time_point<std::chrono::steady_clock> win_time;
 auto stop_move_animation_threshold = 250ms;
+auto exit_threshold = 2s;
+exit_t *exit_object;
+bool is_win = false;
 
+class object_t
+{
+public:
+  object_t(Point3F position) : position(position) {}
+  object_t(const object_t &) = delete;
+  object_t &operator=(const object_t &) = delete;
+  object_t(object_t &&) = delete;
+  object_t &operator=(object_t &&) = delete;
+  virtual ~object_t() = default;
+
+  virtual void draw_foreground(ftxui::Canvas &canvas, const Point2 &point) = 0;
+  virtual void draw_background(ftxui::Canvas &canvas, const Point2 &point) = 0;
+
+public:
+  Point3F position{};
+};
+
+std::random_device rd;
+std::default_random_engine re(rd());
+
+class grass_t : public object_t
+{
+public:
+  grass_t(Point3F pos) : object_t(pos)
+  {
+    static std::uniform_int_distribution<> distr(0, 1);
+    switch (distr(re)) {
+    case 0:
+      str = R"(///)";
+      break;
+    case 1:
+      str = R"(\\\)";
+      break;
+    default:
+      break;
+    }
+  }
+
+  void draw_background([[maybe_unused]] ftxui::Canvas &canvas, [[maybe_unused]] const Point2 &point) override
+  {
+  }
+
+  void draw_foreground(ftxui::Canvas &canvas, const Point2 &point) override
+  {
+    canvas.DrawText(point.x, point.y, str, ftxui::Color::Green);
+  }
+
+private:
+  std::string str;
+};
+
+void draw_chars(ftxui::Canvas &canvas, Point2 point, const ftxui::Color &color, std::string_view str)
+{
+  point.y = point.y / row_height * row_height; // to align y-coordinate with rows for text
+  const auto line_cnt = std::ranges::count(str,'\n');
+  point.y -= static_cast<int> (line_cnt) * row_height;
+  size_t line_start = 0, line_end;
+  do
+  {
+    line_end = str.find('\n', line_start);
+    canvas.DrawText(point.x, point.y, std::string (str.substr(line_start, line_end - line_start)), color);
+    line_start = line_end + 1;
+    point.y += row_height;
+  } while (line_end != std::string_view::npos);
+}
+
+class exit_t : public object_t
+{
+public:
+  explicit exit_t(const Point3F &position) : object_t(position) {}
+  void do_draw(ftxui::Canvas &canvas, Point2 point, ftxui::Color color)
+  {
+    draw_chars(canvas, point, color, 
+R"(/-\
+| |
+| |
+\-/)");
+  }
+
+  void draw_foreground(ftxui::Canvas &canvas, const Point2 &point) override { do_draw(canvas, point, ftxui::Color (0, 0, 255));
+  }
+
+  void draw_background(ftxui::Canvas &canvas, const Point2 &point) override
+  {
+    do_draw(canvas, point, ftxui::Color(0, 0, 192));
+  }
+};
+
+class tree_t : public object_t
+{
+public:
+  explicit tree_t(const Point3F &position) : object_t(position) {}
+
+  static void do_draw(ftxui::Canvas &canvas, Point2 point, ftxui::Color color)
+  {
+    draw_chars(canvas,
+      point,
+      color,
+      R"(
+ /\
+/||\
+/||\
+ ||)");
+  }
+
+  void draw_foreground(ftxui::Canvas &canvas, const Point2 &point) override
+  {
+    do_draw(canvas, point, ftxui::Color(48, 150, 0));
+  }
+
+  void draw_background(ftxui::Canvas &canvas, const Point2 &point) override
+  {
+    do_draw(canvas, point, ftxui::Color(32, 90, 0));
+  }
+};
+
+void check_win_condition()
+{
+  if (!is_win && (player_pos - exit_object->position).length() < win_threshold) {
+    is_win = true;
+    win_time = cur_time;
+  }
+}
 
 void post_process_movement()
 {
@@ -200,6 +182,7 @@ void post_process_movement()
     player_dir = -player_dir;
   player_pos = world_center + (player_pos - world_center).normalized() * world_radius;
   last_move_time = cur_time;
+  check_win_condition();
 }
 
 void post_process_rotation(double step)
@@ -217,10 +200,20 @@ void on_arrow_down()
   post_process_rotation(-angle_step);
 }
 
+void inc_step_frame()
+{
+  ++step_frame;
+  step_frame %= step_frame_count;
+}
+
+
 void on_arrow_right()
 {
   if (facing_right)
+  {
     player_pos += player_dir;
+    inc_step_frame();
+  }
   else
     facing_right = true;
   post_process_movement();
@@ -228,7 +221,10 @@ void on_arrow_right()
 void on_arrow_left()
 {
   if (!facing_right)
+  {
     player_pos += player_dir;
+    inc_step_frame();
+  }
   else
     facing_right = false;
   post_process_movement();
@@ -236,7 +232,7 @@ void on_arrow_left()
 
 Point2F get_projection(const Point3F &point)
 {
-  const auto projection = project_on(point, { get_camera_normal(), player_pos }) - player_pos;
+  const auto projection = geom::project_on(point, { get_camera_normal(), player_pos }) - player_pos;
   const auto p = Point2F {projection.dot(get_camera_x()), projection.dot(get_world_center_to_player())} + screen_offset;
   return p;
 }
@@ -253,69 +249,34 @@ project_info_t get_projection_info(const Point3F &point)
   return {get_projection (point), (point - player_pos).dot(get_camera_normal()) };
 }
 
-class object_t
-{
-public:
-  object_t(Point3F position) : position(position) {}
-  object_t(const object_t &) = delete;
-  object_t &operator=(const object_t &) = delete;
-  object_t(object_t &&) = delete;
-  object_t &operator=(object_t &&) = delete;
-  virtual ~object_t() = default;
-
-  virtual void draw(ftxui::Canvas &canvas, const Point2 &point) = 0;
-
-public:
-  Point3F position;
-};
-
-std::random_device rd;
-std::default_random_engine re(rd());
-
-class grass_t : public object_t
-{
-public:
-  grass_t(Point3F pos) : object_t(pos)
-  {
-    static std::uniform_int_distribution<> distr(0,1);
-    switch (distr (re)) {
-    case 0:
-      str = R"(///)";
-      break;
-    case 1:
-      str = R"(\\\)";
-      break;
-    default:
-      break;
-    }
-  }
-
-  void draw(ftxui::Canvas &canvas, const Point2 &point) override { canvas.DrawText(point.x, point.y, str, ftxui::Color::Green);
-  }
-private:
-  std::string str;
-};
-
 std::vector<std::unique_ptr<object_t>> objects;
 
-void draw_objects(ftxui::Canvas & canvas) {
+void draw_objects_foreground(ftxui::Canvas & canvas) {
   for (const auto &object : objects) {
     auto info = get_projection_info(object->position);
-    if (info.distance < 0.0) {
-      Point2 p(info.projection);
-      object->draw(canvas, p);
+    Point2 p(info.projection);
+    if (info.distance >= 0.0) {
+      object->draw_foreground(canvas, p);
     }
+  }
+}
+
+void draw_objects_background(ftxui::Canvas &canvas)
+{
+  for (const auto &object : objects) {
+    auto info = get_projection_info(object->position);
+    Point2 p(info.projection);
+    if (info.distance < 0.0) { object->draw_background(canvas, p); }
   }
 }
 
 Point3F generate_random_coords_on_world()
 {
-  static const auto distr = std::uniform_real_distribution<>(-1.0, 1.0);
-  static const auto c_sign = std::uniform_int_distribution(0, 1);
-  const double a = distr(re);
-  const double b = distr(re);
-  const double c = sqrt(1 - a * a - b * b) * (c_sign(re) * 2 - 1);
-  return Point3F{ a, b, c } * world_radius ;
+  static const auto theta_distr = std::uniform_real_distribution<>(0.0, std::numbers::pi);
+  static const auto phi_distr = std::uniform_real_distribution(0.0, 2 * std::numbers::pi);
+  const double theta = theta_distr(re);
+  const double phi = phi_distr(re);
+  return Point3F{ cos(phi) * sin(theta), sin(phi) * sin(theta), cos(theta) } * world_radius;
 }
 
 void generate_grass()
@@ -324,6 +285,15 @@ void generate_grass()
 
   for (int i = 0; i < grass_cnt; ++i) {
     objects.emplace_back(std::make_unique<grass_t>(generate_random_coords_on_world()));
+  }
+}
+
+void generate_trees()
+{
+  constexpr int tree_cnt = 75;
+
+  for (int i = 0; i < tree_cnt; ++i) {
+    objects.emplace_back(std::make_unique<tree_t>(generate_random_coords_on_world()));
   }
 }
 
@@ -338,14 +308,18 @@ void draw_background(ftxui::Canvas &canvas)
   }
 }
 
-void generate_world()
-{ generate_grass(); }
-
-constexpr auto step_frame_count = 4;
-void inc_step_frame()
+void generate_exit()
 {
-  ++step_frame;
-  step_frame %= step_frame_count;
+  auto obj = std::make_unique<exit_t>(generate_random_coords_on_world());
+  exit_object = obj.get();
+  objects.emplace_back(std::move (obj));
+}
+
+void generate_world()
+{
+  generate_grass();
+  generate_trees();
+  generate_exit();
 }
 
 std::string get_legs_str_left()
@@ -417,19 +391,33 @@ void draw_object2(ftxui::Canvas &canvas)
   }
 }
 
+void draw_debug(ftxui::Canvas &canvas)
+{
+#if _DEBUG
+  canvas.DrawText(0, 0, fmt::format("Distance to exit: {}", (player_pos - exit_object->position).length()));
+#endif
+}
+
+void draw_victory(ftxui::Canvas &canvas) { canvas.DrawText(20, 20, "Victory!", ftxui::Color::White); }
+
+void draw_overlay(ftxui::Canvas &) {}
+
 void game_iteration_canvas()
 {
   auto screen = ftxui::ScreenInteractive::TerminalOutput();
   auto make_layout = [&] {
     cur_time = std::chrono::steady_clock::now();
     auto canvas = ftxui::Canvas(canvas_size.x, canvas_size.y);
-
     draw_background(canvas);
     draw_object1(canvas);
     draw_object2(canvas);
+    draw_objects_background(canvas);
     draw_planet(canvas);
     draw_player(canvas);
-    draw_objects(canvas);
+    draw_objects_foreground(canvas);
+    draw_overlay(canvas);
+    draw_debug(canvas);
+    if (is_win) draw_victory(canvas);
     return ftxui::canvas(std::move(canvas));
   };
 
@@ -448,14 +436,16 @@ void game_iteration_canvas()
   });
 
   const auto component = ftxui::CatchEvent(renderer, [&](const ftxui::Event &event) {
+    if (is_win && cur_time - win_time > exit_threshold) {
+      screen.ExitLoopClosure()();
+      return true;
+     }
     if (event == ftxui::Event::ArrowRight) {
       on_arrow_right();
-      inc_step_frame();
       return true;
     }
     else if (event == ftxui::Event::ArrowLeft) {
       on_arrow_left();
-      inc_step_frame();
       return true;
      }
     else if (event == ftxui::Event::ArrowUp) {
