@@ -1,6 +1,5 @@
-#include <array>
-#include <functional>
-#include <iostream>
+#include <numbers>
+#include <random>
 #include <random>
 
 #include <docopt/docopt.h>
@@ -14,147 +13,7 @@
 // the source template at `configured_files/config.hpp.in`.
 #include <internal_use_only/config.hpp>
 
-template<std::size_t Width, std::size_t Height> struct GameBoard
-{
-  static constexpr std::size_t width = Width;
-  static constexpr std::size_t height = Height;
-
-  std::array<std::array<std::string, height>, width> strings;
-  std::array<std::array<bool, height>, width> values{};
-
-  std::size_t move_count{ 0 };
-
-  std::string &get_string(std::size_t x, std::size_t y) { return strings.at(x).at(y); }
-
-
-  void set(std::size_t x, std::size_t y, bool new_value)
-  {
-    get(x, y) = new_value;
-
-    if (new_value) {
-      get_string(x, y) = " ON";
-    } else {
-      get_string(x, y) = "OFF";
-    }
-  }
-
-  void visit(auto visitor)
-  {
-    for (std::size_t x = 0; x < width; ++x) {
-      for (std::size_t y = 0; y < height; ++y) { visitor(x, y, *this); }
-    }
-  }
-
-  [[nodiscard]] bool get(std::size_t x, std::size_t y) const { return values.at(x).at(y); }
-
-  [[nodiscard]] bool &get(std::size_t x, std::size_t y) { return values.at(x).at(y); }
-
-  GameBoard()
-  {
-    visit([](const auto x, const auto y, auto &gameboard) { gameboard.set(x, y, true); });
-  }
-
-  void update_strings()
-  {
-    for (std::size_t x = 0; x < width; ++x) {
-      for (std::size_t y = 0; y < height; ++y) { set(x, y, get(x, y)); }
-    }
-  }
-
-  void toggle(std::size_t x, std::size_t y) { set(x, y, !get(x, y)); }
-
-  void press(std::size_t x, std::size_t y)
-  {
-    ++move_count;
-    toggle(x, y);
-    if (x > 0) { toggle(x - 1, y); }
-    if (y > 0) { toggle(x, y - 1); }
-    if (x < width - 1) { toggle(x + 1, y); }
-    if (y < height - 1) { toggle(x, y + 1); }
-  }
-
-  [[nodiscard]] bool solved() const
-  {
-    for (std::size_t x = 0; x < width; ++x) {
-      for (std::size_t y = 0; y < height; ++y) {
-        if (!get(x, y)) { return false; }
-      }
-    }
-
-    return true;
-  }
-};
-
-
-void consequence_game()
-{
-  auto screen = ftxui::ScreenInteractive::TerminalOutput();
-
-  GameBoard<3, 3> gb;
-
-  std::string quit_text;
-
-  const auto update_quit_text = [&quit_text](const auto &game_board) {
-    quit_text = fmt::format("Quit ({} moves)", game_board.move_count);
-    if (game_board.solved()) { quit_text += " Solved!"; }
-  };
-
-  const auto make_buttons = [&] {
-    std::vector<ftxui::Component> buttons;
-    for (std::size_t x = 0; x < gb.width; ++x) {
-      for (std::size_t y = 0; y < gb.height; ++y) {
-        buttons.push_back(ftxui::Button(&gb.get_string(x, y), [=, &gb] {
-          if (!gb.solved()) { gb.press(x, y); }
-          update_quit_text(gb);
-        }));
-      }
-    }
-    return buttons;
-  };
-
-  auto buttons = make_buttons();
-
-  auto quit_button = ftxui::Button(&quit_text, screen.ExitLoopClosure());
-
-  auto make_layout = [&] {
-    std::vector<ftxui::Element> rows;
-
-    std::size_t idx = 0;
-
-    for (std::size_t x = 0; x < gb.width; ++x) {
-      std::vector<ftxui::Element> row;
-      for (std::size_t y = 0; y < gb.height; ++y) {
-        row.push_back(buttons[idx]->Render());
-        ++idx;
-      }
-      rows.push_back(ftxui::hbox(std::move(row)));
-    }
-
-    rows.push_back(ftxui::hbox({ quit_button->Render() }));
-
-    return ftxui::vbox(std::move(rows));
-  };
-
-
-  static constexpr int randomization_iterations = 100;
-  static constexpr int random_seed = 42;
-
-  std::mt19937 gen32{ random_seed };// NOLINT fixed seed
-  std::uniform_int_distribution<std::size_t> x(static_cast<std::size_t>(0), gb.width - 1);
-  std::uniform_int_distribution<std::size_t> y(static_cast<std::size_t>(0), gb.height - 1);
-
-  for (int i = 0; i < randomization_iterations; ++i) { gb.press(x(gen32), y(gen32)); }
-  gb.move_count = 0;
-  update_quit_text(gb);
-
-  auto all_buttons = buttons;
-  all_buttons.push_back(quit_button);
-  auto container = ftxui::Container::Horizontal(all_buttons);
-
-  auto renderer = ftxui::Renderer(container, make_layout);
-
-  screen.Loop(renderer);
-}
+using namespace std::chrono_literals;
 
 struct Color
 {
@@ -206,97 +65,410 @@ private:
   std::vector<Color> pixels = std::vector<Color>(width_ * height_, Color{});
 };
 
-void game_iteration_canvas()
+class Point3
 {
-  // this should probably have a `bitmap` helper function that does what you expect
-  // similar to the other parts of FTXUI
-  auto bm = std::make_shared<Bitmap>(50, 50);// NOLINT magic numbers
-  auto small_bm = std::make_shared<Bitmap>(6, 6);// NOLINT magic numbers
+public:
+  int x;
+  int y;
+  int z;
+};
 
-  double fps = 0;
+class Point2F
+{
+public:
+  Point2F operator+(const Point2F &other) const { return { x + other.x, y + other.y}; }
+  Point2F operator-(const Point2F &other) const { return { x - other.x, y - other.y }; }
+  [[nodiscard]] double length() const { return sqrt(sq_length()); }
+  [[nodiscard]] double sq_length() const { return x * x + y * y; }
 
-  std::size_t max_row = 0;
-  std::size_t max_col = 0;
+public:
+  double x;
+  double y;
+};
 
-  // to do, add total game time clock also, not just current elapsed time
-  auto game_iteration = [&](const std::chrono::steady_clock::duration elapsed_time) {
-    // in here we simulate however much game time has elapsed. Update animations,
-    // run character AI, whatever, update stats, etc
+class Point2
+{
+public:
+  constexpr Point2(int x, int y) : x(x), y(y) {}
+  constexpr Point2(const Point2F &p) : x(static_cast<int>(p.x)), y(static_cast<int>(p.y)) {}
 
-    // this isn't actually timing based for now, it's just updating the display however fast it can
-    fps = 1.0
-          / (static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(elapsed_time).count())
-             / 1'000'000.0);// NOLINT magic numbers
+public:
+  int x;
+  int y;
+};
 
-    for (std::size_t row = 0; row < max_row; ++row) {
-      for (std::size_t col = 0; col < bm->width(); ++col) { ++(bm->at(col, row).R); }
-    }
+class Point3F
+{
+public:
+  double x;
+  double y;
+  double z;
 
-    for (std::size_t row = 0; row < bm->height(); ++row) {
-      for (std::size_t col = 0; col < max_col; ++col) { ++(bm->at(col, row).G); }
-    }
+public:
+  Point3F operator-(const Point3F &other) const
+  {
+    return { x - other.x, y - other.y, z - other.z };
+  }
+  Point3F operator+(const Point3F &other) const
+  {
+    return { x + other.x, y + other.y, z + other.z };
+  }
+  Point3F &operator+=(const Point3F &other)
+  {
+    *this = *this + other;
+    return *this;
+  }
 
-    // for the fun of it, let's have a second window doing interesting things
-    auto &small_bm_pixel =
-      small_bm->data().at(static_cast<std::size_t>(elapsed_time.count()) % small_bm->data().size());
+  [[nodiscard]] double length() const
+  {
+    return sqrt(sq_length());
+  }
 
-    switch (elapsed_time.count() % 3) {
+  [[nodiscard]] double sq_length() const
+  {
+    return x * x + y * y + z * z;
+  }
+
+  [[nodiscard]] Point3F normalized() const
+  {
+    return *this / length();
+  }
+  Point3F operator-() const
+  {
+    return {-x, -y, -z};
+  }
+  Point3F operator/(double v) const
+  {
+    return{x/v, y/v, z/v};
+  }
+  Point3F operator*(double v) const { return { x * v, y * v, z * v }; }
+
+  [[nodiscard]] Point3F cross(const Point3F &other) const
+  {
+    return {y *other.z - z *other.y, other.x * z - other.z * x, x * other.y - y * other.x};
+  }
+
+  [[nodiscard]] double dot(const Point3F &other) const
+  {
+    return x *other.x + y *other.y + z * other.z;
+  }
+};
+
+class Plane
+{
+public:
+  Point3F normal;
+  Point3F origin;
+};
+
+Point3F project_on(const Point3F &point, const Plane &plane)
+{
+  // inspired by https://stackoverflow.com/a/9605695/1269661
+  const auto v = point - plane.origin;
+  const auto dist= v.dot(plane.normal);
+  return point - plane.normal * dist;
+}
+
+
+
+constexpr Point3F world_center{ 0., 0., 0. };
+constexpr double world_radius = 400.0;
+constexpr Point2 canvas_size = { 200, 100 };
+constexpr Point2F screen_offset = { canvas_size.x / 2., canvas_size.y * 3. / 4. };
+
+bool facing_right = true;
+int step_frame = 0;
+Point3F player_pos = { world_center.x, world_center.y, world_center.z + world_radius};
+Point3F object1_pos = { world_center.x + world_radius / 10, world_center.y, world_center.z + world_radius};
+Point3F object2_pos = { world_center.x - world_radius / 5, world_center.y, world_center.z + world_radius };
+double angle = 0.0;
+constexpr double angle_step = std::numbers::pi_v<double> * 0.025;
+Point3F player_dir = { 1.0, 0.0, 0.0 };
+Point3F player_normal = { 0.0, 1.0, 0.0 };
+Point3F get_world_center_to_player() { return (world_center - player_pos).normalized(); }
+Point3F  get_camera_x() { return get_world_center_to_player().cross (player_normal); }
+Point3F get_camera_normal() { return player_normal; }
+std::chrono::time_point<std::chrono::steady_clock> last_move_time;
+std::chrono::time_point<std::chrono::steady_clock> cur_time;
+auto stop_move_animation_threshold = 250ms;
+
+
+void post_process_movement()
+{
+  player_dir = get_world_center_to_player().cross (player_normal);
+  if (!facing_right)
+    player_dir = -player_dir;
+  player_pos = world_center + (player_pos - world_center).normalized() * world_radius;
+  last_move_time = cur_time;
+}
+
+void post_process_rotation(double step)
+{
+  const auto other = player_normal.cross(get_world_center_to_player());
+  player_normal = player_normal * cos(step) + other * sin(step);
+  post_process_movement();
+}
+
+void on_arrow_up()
+{ post_process_rotation(angle_step); }
+
+void on_arrow_down()
+{
+  post_process_rotation(-angle_step);
+}
+
+void on_arrow_right()
+{
+  if (facing_right)
+    player_pos += player_dir;
+  else
+    facing_right = true;
+  post_process_movement();
+}
+void on_arrow_left()
+{
+  if (!facing_right)
+    player_pos += player_dir;
+  else
+    facing_right = false;
+  post_process_movement();
+}
+
+Point2F get_projection(const Point3F &point)
+{
+  const auto projection = project_on(point, { get_camera_normal(), player_pos }) - player_pos;
+  const auto p = Point2F {projection.dot(get_camera_x()), projection.dot(get_world_center_to_player())} + screen_offset;
+  return p;
+}
+
+class project_info_t
+{
+public:
+  Point2F projection;
+  double distance; // if negative then object is in front
+};
+
+project_info_t get_projection_info(const Point3F &point)
+{
+  return {get_projection (point), (point - player_pos).dot(get_camera_normal()) };
+}
+
+class object_t
+{
+public:
+  object_t(Point3F position) : position(position) {}
+  object_t(const object_t &) = delete;
+  object_t &operator=(const object_t &) = delete;
+  object_t(object_t &&) = delete;
+  object_t &operator=(object_t &&) = delete;
+  virtual ~object_t() = default;
+
+  virtual void draw(ftxui::Canvas &canvas, const Point2 &point) = 0;
+
+public:
+  Point3F position;
+};
+
+std::random_device rd;
+std::default_random_engine re(rd());
+
+class grass_t : public object_t
+{
+public:
+  grass_t(Point3F pos) : object_t(pos)
+  {
+    static std::uniform_int_distribution<> distr(0,1);
+    switch (distr (re)) {
     case 0:
-      small_bm_pixel.R += 11;// NOLINT Magic Number
+      str = R"(///)";
       break;
     case 1:
-      small_bm_pixel.G += 11;// NOLINT Magic Number
+      str = R"(\\\)";
       break;
-    case 2:
-      small_bm_pixel.B += 11;// NOLINT Magic Number
+    default:
       break;
     }
+  }
 
+  void draw(ftxui::Canvas &canvas, const Point2 &point) override { canvas.DrawText(point.x, point.y, str, ftxui::Color::Green);
+  }
+private:
+  std::string str;
+};
 
-    ++max_row;
-    if (max_row >= bm->height()) { max_row = 0; }
-    ++max_col;
-    if (max_col >= bm->width()) { max_col = 0; }
-  };
+std::vector<std::unique_ptr<object_t>> objects;
 
+void draw_objects(ftxui::Canvas & canvas) {
+  for (const auto &object : objects) {
+    auto info = get_projection_info(object->position);
+    if (info.distance < 0.0) {
+      Point2 p(info.projection);
+      object->draw(canvas, p);
+    }
+  }
+}
+
+Point3F generate_random_coords_on_world()
+{
+  static const auto distr = std::uniform_real_distribution<>(-1.0, 1.0);
+  static const auto c_sign = std::uniform_int_distribution(0, 1);
+  const double a = distr(re);
+  const double b = distr(re);
+  const double c = sqrt(1 - a * a - b * b) * (c_sign(re) * 2 - 1);
+  return Point3F{ a, b, c } * world_radius ;
+}
+
+void generate_grass()
+{
+  constexpr int grass_cnt = 300;
+
+  for (int i = 0; i < grass_cnt; ++i) {
+    objects.emplace_back(std::make_unique<grass_t>(generate_random_coords_on_world()));
+  }
+}
+
+void draw_background(ftxui::Canvas &canvas)
+{
+  int x = 3;
+  int y = 5;
+  for (int i = 0; i < 200; ++i) {
+    x = (x * 48271) % 0x7fffffff;
+    y = (y * 11141) % 0x7fffffff;
+    canvas.DrawPoint(x % canvas.width(), y % canvas.height(), true, ftxui::Color::White);
+  }
+}
+
+void generate_world()
+{ generate_grass(); }
+
+constexpr auto step_frame_count = 4;
+void inc_step_frame()
+{
+  ++step_frame;
+  step_frame %= step_frame_count;
+}
+
+std::string get_legs_str_left()
+{
+  switch (step_frame) {
+  case 0:
+    return R"(/ \)";
+  case 1:
+    return R"( |\)";
+  case 2:
+    return R"( | )";
+  case 3:
+    return R"(/| )";
+  default:
+    return {};
+  }
+}
+
+std::string get_legs_str()
+{
+  auto str = get_legs_str_left();
+  if (facing_right) {
+    std::ranges::reverse(str);
+    for (auto &c : str) {
+      if (c == '\\') c = '/';
+      else if (c == '/') c = '\\';
+    }
+  }
+  return str;
+}
+
+void draw_player(ftxui::Canvas &canvas)
+{
+  if (cur_time - last_move_time > stop_move_animation_threshold) step_frame = 0;
+  const auto pos = get_projection(player_pos);
+  const Point2 p(pos);
+  canvas.DrawText(p.x - 1, p.y - 9, facing_right ? R"( O>)" : R"(<O)", ftxui::Color::White);
+  canvas.DrawText(p.x - 1, p.y - 6, R"(/|\)", ftxui::Color::White);
+  const auto str = get_legs_str();
+
+  canvas.DrawText(p.x - 1, p.y - 3, str, ftxui::Color::White);
+}
+
+void draw_planet(ftxui::Canvas &canvas)
+{
+  const auto pos = get_projection(world_center);
+  const Point2 p(pos);
+  canvas.DrawPointCircleFilled(p.x, p.y, static_cast<int>(world_radius), ftxui::Color::RosyBrown);
+}
+
+void draw_object1(ftxui::Canvas &canvas)
+{
+  const auto info = get_projection_info(object1_pos);
+  if (info.distance >= 0) {
+    const Point2 p(info.projection);
+    canvas.DrawPointCircle(p.x, p.y, static_cast<int>(15 * (1. / (1. + info.distance))), ftxui::Color::Green);
+  }
+}
+
+void draw_object2(ftxui::Canvas &canvas)
+{
+  const auto info = get_projection_info(object2_pos);
+  if (info.distance >= 0) {
+    const Point2 p(info.projection);
+    canvas.DrawPointCircle(p.x,
+      p.y,
+      static_cast<int>(25 * (1. / pow(1. + info.distance, 0.3333))),
+      ftxui::Color(static_cast<uint8_t>(255 - 3 * static_cast<int>(info.distance)), 0, 0));
+  }
+}
+
+void game_iteration_canvas()
+{
   auto screen = ftxui::ScreenInteractive::TerminalOutput();
-
-  int counter = 0;
-
-  auto last_time = std::chrono::steady_clock::now();
-
   auto make_layout = [&] {
-    // This code actually processes the draw event
-    const auto new_time = std::chrono::steady_clock::now();
+    cur_time = std::chrono::steady_clock::now();
+    auto canvas = ftxui::Canvas(canvas_size.x, canvas_size.y);
 
-    ++counter;
-    // we will dispatch to the game_iteration function, where the work happens
-    game_iteration(new_time - last_time);
-    last_time = new_time;
-
-    // now actually draw the game elements
-    return ftxui::hbox({ bm | ftxui::border,
-      ftxui::vbox({ ftxui::text("Frame: " + std::to_string(counter)),
-        ftxui::text("FPS: " + std::to_string(fps)),
-        small_bm | ftxui::border }) });
+    draw_background(canvas);
+    draw_object1(canvas);
+    draw_object2(canvas);
+    draw_planet(canvas);
+    draw_player(canvas);
+    draw_objects(canvas);
+    return ftxui::canvas(std::move(canvas));
   };
 
-  auto renderer = ftxui::Renderer(make_layout);
-
+  const auto renderer = ftxui::Renderer(make_layout);
 
   std::atomic<bool> refresh_ui_continue = true;
 
   // This thread exists to make sure that the event queue has an event to
   // process at approximately a rate of 30 FPS
+  constexpr auto refresh_time = 1.0s / 30.0;
   std::thread refresh_ui([&] {
     while (refresh_ui_continue) {
-      using namespace std::chrono_literals;
-      std::this_thread::sleep_for(1.0s / 30.0);// NOLINT magic numbers
+      std::this_thread::sleep_for(refresh_time);// NOLINT magic numbers
       screen.PostEvent(ftxui::Event::Custom);
     }
   });
 
-  screen.Loop(renderer);
+  const auto component = ftxui::CatchEvent(renderer, [&](const ftxui::Event &event) {
+    if (event == ftxui::Event::ArrowRight) {
+      on_arrow_right();
+      inc_step_frame();
+      return true;
+    }
+    else if (event == ftxui::Event::ArrowLeft) {
+      on_arrow_left();
+      inc_step_frame();
+      return true;
+     }
+    else if (event == ftxui::Event::ArrowUp) {
+      on_arrow_up();
+      return true;
+    }
+    else if (event == ftxui::Event::ArrowDown) {
+       on_arrow_down();
+       return true;
+     }
+    return false;
+  });
+  screen.Loop(component);
 
   refresh_ui_continue = false;
   refresh_ui.join();
@@ -309,8 +481,7 @@ int main(int argc, const char **argv)
       R"(intro
 
     Usage:
-          intro turn_based
-          intro loop_based
+          intro
           intro (-h | --help)
           intro --version
  Options:
@@ -324,13 +495,9 @@ int main(int argc, const char **argv)
       fmt::format("{} {}",
         cppbp_gj::cmake::project_name,
         cppbp_gj::cmake::project_version));// version string, acquired
-                                           // from config.hpp via CMake
-
-    if (args["turn_based"].asBool()) {
-      consequence_game();
-    } else {
-      game_iteration_canvas();
-    }
+                                            // from config.hpp via CMake
+    generate_world();
+    game_iteration_canvas();
 
     //    consequence_game();
   } catch (const std::exception &e) {
