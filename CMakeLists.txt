@@ -49,10 +49,10 @@ include(${_project_options_SOURCE_DIR}/Index.cmake)
 
 # Set the project name and language
 project(
-  cppbp-gj
+  cppbp_gj
   VERSION 0.0.1
   DESCRIPTION ""
-  HOMEPAGE_URL "https://github.com/Predelnik/cppbp-gj"
+  HOMEPAGE_URL "https://github.com/Predelnik/cppbp_gj"
   LANGUAGES CXX C)
 
 set(GIT_SHA

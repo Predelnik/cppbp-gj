@@ -322,8 +322,8 @@ int main(int argc, const char **argv)
       { std::next(argv), std::next(argv, argc) },
       true,// show help if requested
       fmt::format("{} {}",
-        cppbp-gj::cmake::project_name,
-        cppbp-gj::cmake::project_version));// version string, acquired
+        cppbp_gj::cmake::project_name,
+        cppbp_gj::cmake::project_version));// version string, acquired
                                             // from config.hpp via CMake
 
     if (args["turn_based"].asBool()) {
