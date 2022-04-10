@@ -324,7 +324,7 @@ int main(int argc, const char **argv)
       fmt::format("{} {}",
         cppbp_gj::cmake::project_name,
         cppbp_gj::cmake::project_version));// version string, acquired
-                                            // from config.hpp via CMake
+                                           // from config.hpp via CMake
 
     if (args["turn_based"].asBool()) {
       consequence_game();
