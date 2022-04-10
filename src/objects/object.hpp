@@ -12,7 +12,7 @@ struct Canvas;
 class object_t
 {
 public:
-  explicit object_t(Point3F position);
+  explicit object_t(const Point3F &pos);
   object_t(const object_t &) = delete;
   object_t &operator=(const object_t &) = delete;
   object_t(object_t &&) = delete;

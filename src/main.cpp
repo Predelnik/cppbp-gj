@@ -10,8 +10,6 @@
 
 #include "gamestate.hpp"
 #include "geometry/point2.hpp"
-#include "geometry/point2f.hpp"
-#include "geometry/point3f.hpp"
 
 // This file will be generated automatically when you run the CMake
 // configuration step. It creates a namespace called `cppbp-gj`. You can modify
@@ -77,12 +75,12 @@ int main(int argc, const char **argv)
 {
   try {
     static constexpr auto USAGE =
-      R"(intro
+      R"(demo
 
     Usage:
-          intro
-          intro (-h | --help)
-          intro --version
+          demo
+          demo (-h | --help)
+          demo --version
  Options:
           -h --help     Show this screen.
           --version     Show version.

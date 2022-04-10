@@ -40,7 +40,8 @@ private:
   [[nodiscard]] Point3F get_world_center_to_player() const;
   [[nodiscard]] Point3F get_camera_x() const;
   [[nodiscard]] Point3F get_camera_normal() const { return player_normal; }
-  [[nodiscard]] Point2F get_projection(const Point3F &point) const;
+  [[nodiscard]] Point2F get_projection_f(const Point3F &point) const;
+  [[nodiscard]] Point2 get_projection(const Point3F &point) const;
   [[nodiscard]] std::string get_legs_str_left() const;
   [[nodiscard]] std::string get_legs_str() const;
   [[nodiscard]] Point3F generate_random_coords_on_world();
@@ -65,7 +66,9 @@ private:
   void draw_planet(ftxui::Canvas &canvas) const;
   void draw_object1(ftxui::Canvas &canvas) const;
   void draw_object2(ftxui::Canvas &canvas) const;
+#if _DEBUG
   void draw_debug(ftxui::Canvas &canvas) const;
+#endif
 
 public:
   bool facing_right = true;

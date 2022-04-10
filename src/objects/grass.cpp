@@ -5,7 +5,7 @@
 #include "geometry/point2.hpp"
 #include "geometry/point3f.hpp"
 
-grass_t::grass_t(Point3F pos, int grass_type) : object_t(pos)
+grass_t::grass_t(const Point3F &pos, int grass_type) : object_t(pos)
 {
   switch (grass_type) {
   case 0:

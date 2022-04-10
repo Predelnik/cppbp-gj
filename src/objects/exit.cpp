@@ -15,9 +15,12 @@ void exit_t::do_draw(ftxui::Canvas &canvas, Point2 point, ftxui::Color color)
 \-/)");
 }
 
-void exit_t::draw_foreground(ftxui::Canvas &canvas, const Point2 &point) { do_draw(canvas, point, ftxui::Color (0, 0, 255));
+void exit_t::draw_foreground(ftxui::Canvas &canvas, const Point2 &point) {
+  const auto fg_color = ftxui::Color(0, 0, 255);
+  do_draw(canvas, point, fg_color);
 }
 
 void exit_t::draw_background(ftxui::Canvas &canvas, const Point2 &point) {
-  do_draw(canvas, point, ftxui::Color(0, 0, 192));
+  const auto bg_color = ftxui::Color(0, 0, 192);
+  do_draw(canvas, point, bg_color);
 }

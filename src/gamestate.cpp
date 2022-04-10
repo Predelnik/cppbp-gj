@@ -1,5 +1,7 @@
 #include "gamestate.hpp"
 
+#include "draw_helpers.hpp"
+
 #include <fmt/format.h>
 #include <ftxui/dom/canvas.hpp>
 
@@ -10,13 +12,15 @@
 #include "objects/grass.hpp"
 #include "objects/object.hpp"
 
+#include <algorithm>
 #include <chrono>
+#include <random>
 
 inline Point3F GameState::get_world_center_to_player() const { return (world_center - player_pos).normalized(); }
 Point3F GameState::get_camera_x() const { return get_world_center_to_player().cross(player_normal); }
 void GameState::process_before_frame()
 {
-  if (cur_time - last_move_time > stop_move_animation_threshold) step_frame = 0;
+  if (cur_time - last_move_time > stop_move_animation_threshold) { step_frame = 0; }
 }
 
 void GameState::check_win_condition() {
@@ -28,8 +32,7 @@ void GameState::check_win_condition() {
 
 void GameState::post_process_movement() {
   player_dir = get_world_center_to_player().cross (player_normal);
-  if (!facing_right)
-    player_dir = -player_dir;
+  if (!facing_right) { player_dir = -player_dir; }
   player_pos = world_center + (player_pos - world_center).normalized() * world_radius;
   last_move_time = cur_time;
   check_win_condition();
@@ -58,9 +61,9 @@ void GameState::on_arrow_right() {
   {
     player_pos += player_dir;
     inc_step_frame();
-  }
-  else
+  } else {
     facing_right = true;
+  }
   post_process_movement();
 }
 
@@ -69,9 +72,9 @@ void GameState::on_arrow_left() {
   {
     player_pos += player_dir;
     inc_step_frame();
-  }
-  else
+  } else {
     facing_right = false;
+  }
   post_process_movement();
 }
 
@@ -87,22 +90,26 @@ void GameState::draw(ftxui::Canvas &canvas)
   draw_player(canvas);
   draw_objects_foreground(canvas);
   draw_overlay(canvas);
+#if _DEBUG
   draw_debug(canvas);
-  if (is_win) draw_victory(canvas);
+#endif
+  if (is_win) { draw_victory(canvas); }
 }
 
 bool GameState::is_done() const { return is_win &&cur_time - win_time > exit_threshold; }
 
-Point2F GameState::get_projection(const Point3F &point) const
+Point2F GameState::get_projection_f(const Point3F &point) const
 {
   const auto projection = geom::project_on(point, { get_camera_normal(), player_pos }) - player_pos;
   const auto p = Point2F {projection.dot(get_camera_x()), projection.dot(get_world_center_to_player())} + screen_offset;
   return p;
 }
 
+Point2 GameState::get_projection(const Point3F &point) const { return Point2(get_projection_f (point)); }
+
 project_info_t GameState::get_projection_info(const Point3F &point) const
 {
-  return { get_projection(point), (point - player_pos).dot(get_camera_normal()) };
+  return { get_projection_f(point), (point - player_pos).dot(get_camera_normal()) };
 }
 
 void GameState::draw_objects_foreground(ftxui::Canvas &canvas) const
@@ -141,11 +148,19 @@ void GameState::generate_trees() {
 
 void GameState::draw_background(ftxui::Canvas &canvas)
 {
-  int x = 3;
-  int y = 5;
-  for (int i = 0; i < 200; ++i) {
-    x = (x * 48271) % 0x7fffffff;
-    y = (y * 11141) % 0x7fffffff;
+  // pseudo random generation
+  constexpr int x_start = 3;
+  constexpr int y_start = 5;
+  constexpr int x_mult = 48271;
+  constexpr int y_mult = 11141;
+  constexpr int mod_num = 0x7fffffff;
+  constexpr int star_cnt = 200;
+
+  int x = x_start;
+  int y = y_start;
+  for (int i = 0; i < star_cnt; ++i) {
+    x = (x * x_mult) % mod_num;
+    y = (y * y_mult) % mod_num;
     canvas.DrawPoint(x % canvas.width(), y % canvas.height(), true, ftxui::Color::White);
   }
 }
@@ -162,15 +177,19 @@ void GameState::generate_world() {
   generate_exit();
 }
 
-void GameState::draw_debug(ftxui::Canvas &canvas) const
+#ifdef _DEBUG
+void GameState::draw_debug([[maybe_unused]] ftxui::Canvas &canvas) const
 {
-#if _DEBUG
   canvas.DrawText(0, 0, fmt::format("Distance to exit: {}", (player_pos - exit_object->position).length()));
-#endif
 }
+#endif
 
-void GameState::draw_victory(ftxui::Canvas &canvas) { canvas.DrawText(20, 20, "Victory!", ftxui::Color::White); }
-void GameState::draw_overlay(ftxui::Canvas &) {}
+void GameState::draw_victory(ftxui::Canvas &canvas)
+{
+  constexpr Point2 victory_pos{ 20, 20 };
+  canvas.DrawText(victory_pos.x, victory_pos.y, "Victory!", ftxui::Color::White);
+}
+void GameState::draw_overlay([[maybe_unused]] ftxui::Canvas &canvas) {}
 
 std::string GameState::get_legs_str_left() const {
   switch (step_frame) {
@@ -190,12 +209,15 @@ std::string GameState::get_legs_str_left() const {
 std::string GameState::get_legs_str() const {
   auto str = get_legs_str_left();
   if (facing_right) {
-    std::ranges::reverse(str);
+    std::reverse(str.begin (), str.end ());
     for (auto &c : str) {
       if (c == '\\')
+      {
         c = '/';
-      else if (c == '/')
+      } else if (c == '/')
+      {
         c = '\\';
+      }
     }
   }
   return str;
@@ -204,27 +226,23 @@ std::string GameState::get_legs_str() const {
 void GameState::draw_player(ftxui::Canvas &canvas) const
 {
   const auto pos = get_projection(player_pos);
-  const Point2 p(pos);
-  canvas.DrawText(p.x - 1, p.y - 9, facing_right ? R"( O>)" : R"(<O)", ftxui::Color::White);
-  canvas.DrawText(p.x - 1, p.y - 6, R"(/|\)", ftxui::Color::White);
-  const auto str = get_legs_str();
-
-  canvas.DrawText(p.x - 1, p.y - 3, str, ftxui::Color::White);
+  auto str = fmt::format("{}\n{}\n{}", facing_right ? R"( O>)" : R"(<O)", R"(/|\)", get_legs_str());
+  draw_chars(canvas, pos, ftxui::Color::White, str);
 }
 
 void GameState::draw_planet(ftxui::Canvas &canvas) const
 {
   const auto pos = get_projection(world_center);
-  const Point2 p(pos);
-  canvas.DrawPointCircleFilled(p.x, p.y, static_cast<int>(world_radius), ftxui::Color::RosyBrown);
+  canvas.DrawPointCircleFilled(pos.x, pos.y, static_cast<int>(world_radius), ftxui::Color::RosyBrown);
 }
 
 void GameState::draw_object1(ftxui::Canvas &canvas) const
 {
   const auto info = get_projection_info(object1_pos);
   if (info.distance >= 0) {
-    const Point2 p(info.projection);
-    canvas.DrawPointCircle(p.x, p.y, static_cast<int>(15 * (1. / (1. + info.distance))), ftxui::Color::Green);
+    const auto p = Point2 (info.projection);
+    constexpr auto base_radius = 15.0;
+    canvas.DrawPointCircle(p.x, p.y, static_cast<int>(base_radius * (1. / (1. + info.distance))), ftxui::Color::Green);
   }
 }
 
@@ -232,18 +250,22 @@ void GameState::draw_object2(ftxui::Canvas &canvas) const
 {
   const auto info = get_projection_info(object2_pos);
   if (info.distance >= 0) {
-    const Point2 p(info.projection);
+    const auto p = Point2 (info.projection);
+    constexpr auto base_radius = 25.0;
+    constexpr auto size_pow_scale = 1. / 3.;
+    constexpr auto max_color = 255;
+    constexpr auto dist_mult = 3;
     canvas.DrawPointCircle(p.x,
       p.y,
-      static_cast<int>(25 * (1. / pow(1. + info.distance, 0.3333))),
-      ftxui::Color(static_cast<uint8_t>(255 - 3 * static_cast<int>(info.distance)), 0, 0));
+      static_cast<int>(base_radius * (1. / pow(1. + info.distance, size_pow_scale))),
+      ftxui::Color(static_cast<uint8_t>(max_color - dist_mult * static_cast<int>(info.distance)), 0, 0));
   }
 }
 
 Point3F GameState::generate_random_coords_on_world()
 {
-  static const auto theta_distr = std::uniform_real_distribution<>(0.0, std::numbers::pi);
-  static const auto phi_distr = std::uniform_real_distribution(0.0, 2 * std::numbers::pi);
+  static auto theta_distr = std::uniform_real_distribution<>(0.0, std::numbers::pi);
+  static auto phi_distr = std::uniform_real_distribution(0.0, 2 * std::numbers::pi);
   const double theta = theta_distr(re);
   const double phi = phi_distr(re);
   return Point3F{ cos(phi) * sin(theta), sin(phi) * sin(theta), cos(theta) } * world_radius;
