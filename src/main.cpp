@@ -1,6 +1,5 @@
 #include <numbers>
 #include <random>
-#include <random>
 
 #include <docopt/docopt.h>
 #include <ftxui/component/captured_mouse.hpp>// for ftxui
@@ -43,10 +42,10 @@ void game_iteration_canvas()
   });
 
   const auto component = ftxui::CatchEvent(renderer, [&](const ftxui::Event &event) {
-    if (state.is_done ()) {
+    if (state.is_done()) {
       screen.ExitLoopClosure()();
       return true;
-     }
+    }
     if (event == ftxui::Event::ArrowRight) {
       state.on_arrow_right();
       return true;
@@ -54,15 +53,15 @@ void game_iteration_canvas()
     if (event == ftxui::Event::ArrowLeft) {
       state.on_arrow_left();
       return true;
-     }
+    }
     if (event == ftxui::Event::ArrowUp) {
       state.on_arrow_up();
       return true;
     }
     if (event == ftxui::Event::ArrowDown) {
-       state.on_arrow_down();
-       return true;
-     }
+      state.on_arrow_down();
+      return true;
+    }
     return false;
   });
   screen.Loop(component);
@@ -92,7 +91,7 @@ int main(int argc, const char **argv)
       fmt::format("{} {}",
         cppbp_gj::cmake::project_name,
         cppbp_gj::cmake::project_version));// version string, acquired
-                                            // from config.hpp via CMake
+                                           // from config.hpp via CMake
     game_iteration_canvas();
 
     //    consequence_game();

@@ -82,10 +82,8 @@ public:
   time_point last_move_time;
   time_point cur_time;
   time_point win_time;
-  exit_t *exit_object {};
+  exit_t *exit_object{};
   bool is_win = false;
   std::vector<std::unique_ptr<object_t>> objects;
-  std::default_random_engine re{std::random_device{}()};
+  std::default_random_engine re{ std::random_device{}() };
 };
-
-

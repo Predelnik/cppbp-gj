@@ -4,8 +4,7 @@
 
 class Point2;
 
-namespace ftxui
-{
+namespace ftxui {
 struct Canvas;
 }
 

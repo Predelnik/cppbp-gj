@@ -5,9 +5,8 @@
 class Point3F;
 class Point2;
 
-namespace ftxui
-{
-  class Color;
+namespace ftxui {
+class Color;
 }
 
 class tree_t : public object_t
